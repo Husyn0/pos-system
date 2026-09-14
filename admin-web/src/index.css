@@ -1,0 +1,16 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body { @apply antialiased; }
+  h1, h2, h3 { @apply font-display; }
+}
+
+@layer components {
+  .btn-primary { @apply bg-roast text-paper px-4 py-2 rounded-md font-medium hover:bg-roast-dark transition-colors; }
+  .btn-ghost { @apply px-4 py-2 rounded-md font-medium text-ink hover:bg-black/5 transition-colors; }
+  .card { @apply bg-white rounded-lg border border-black/5; }
+  .stat-number { @apply font-display text-4xl tabular-nums; }
+  .input { @apply w-full rounded-md border border-black/10 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-roast/40; }
+}

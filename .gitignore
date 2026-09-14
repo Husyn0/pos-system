@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+vendor/
+
+# Build output
+dist/
+build/
+.next/
+
+# Env files
+.env
+.env.local
+
+# Laravel
+backend-laravel/storage/*.key
+backend-laravel/bootstrap/cache/*
+
+# Electron
+desktop-pos/dist/
+desktop-pos/out/
+
+# Java
+hardware-bridge/target/
+
+# OS
+.DS_Store

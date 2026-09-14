@@ -1,0 +1,75 @@
+version: '3.8'
+
+# Brings up the CLOUD side of the platform for local development:
+# database, cache/queue, the Laravel API, and both web frontends.
+# The hardware-bridge and desktop-pos apps are NOT included here — they
+# run on-premise at each restaurant, not in the cloud (see ARCHITECTURE.md).
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: coffee_pos
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports: ["5432:5432"]
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+
+  api:
+    build:
+      context: ./backend-laravel
+      dockerfile: Dockerfile
+    environment:
+      DB_HOST: postgres
+      REDIS_HOST: redis
+      APP_ENV: local
+    ports: ["8000:8000"]
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_started }
+    volumes:
+      - ./backend-laravel:/var/www/html
+
+  queue-worker:
+    build:
+      context: ./backend-laravel
+      dockerfile: Dockerfile
+    command: php artisan queue:work --tries=3
+    environment:
+      DB_HOST: postgres
+      REDIS_HOST: redis
+    depends_on: [api]
+
+  reverb:
+    build:
+      context: ./backend-laravel
+      dockerfile: Dockerfile
+    command: php artisan reverb:start --host=0.0.0.0 --port=8080
+    ports: ["8080:8080"]
+    depends_on: [api]
+
+  admin-web:
+    build:
+      context: ./admin-web
+    ports: ["5173:5173"]
+    environment:
+      VITE_API_URL: http://localhost:8000/api
+
+  public-web:
+    build:
+      context: ./public-web
+    ports: ["3000:3000"]
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000/api
+
+volumes:
+  pgdata:

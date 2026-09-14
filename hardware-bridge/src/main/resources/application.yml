@@ -1,0 +1,34 @@
+server:
+  port: 8088
+
+bridge:
+  # Shared secret the desktop app / admin-web POS screen must send in the
+  # X-Bridge-Secret header — this API is LAN-only, but still shouldn't be
+  # wide open to anything else on the network.
+  shared-secret: ${BRIDGE_SHARED_SECRET:change-me-at-install-time}
+  branch-id: ${BRIDGE_BRANCH_ID:}
+  cloud-api-url: ${CLOUD_API_URL:http://localhost:8000/api}
+
+  printers:
+    receipt:
+      connection-type: network   # network | usb | serial
+      ip-address: 192.168.1.50
+      port: 9100
+      paper-width-mm: 80
+      has-cash-drawer: true      # drawer is wired through this printer's RJ11 kick cable
+    kitchen:
+      connection-type: network
+      ip-address: 192.168.1.51
+      port: 9100
+
+  cash-drawer:
+    trigger-mode: printer-kick   # printer-kick | serial
+    serial-port: COM3            # only used if trigger-mode = serial
+
+  scanner:
+    mode: keyboard-wedge          # keyboard-wedge (no bridge involvement) | serial
+    serial-port: COM4
+
+logging:
+  level:
+    com.coffeepos.bridge: INFO

@@ -1,0 +1,14 @@
+{
+  "expo": {
+    "name": "Brewline",
+    "slug": "coffee-pos-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": { "backgroundColor": "#F7F5F1" },
+    "ios": { "supportsTablet": true, "bundleIdentifier": "com.brewline.pos" },
+    "android": { "package": "com.brewline.pos" },
+    "plugins": ["expo-secure-store"]
+  }
+}
