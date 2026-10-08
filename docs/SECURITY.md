@@ -12,6 +12,8 @@ Role-based access control: `roles` (owner, manager, cashier, waiter, kitchen, ac
 
 Multi-tenant isolation is enforced twice: an Eloquent global scope adds `WHERE tenant_id = ?` automatically, and Postgres row-level security policies (commented in `schema.sql`) provide a second, database-level backstop so a bug in application code can't leak cross-tenant data.
 
+**Tenant resolution for non-browser clients.** `admin-web`, `mobile-app`, and `desktop-pos` aren't hosted on a tenant's subdomain, so they identify their tenant via an explicit `X-Tenant-Id` header instead. Because that header is self-reported, it alone is not treated as authorization: `EnsureUserBelongsToTenant` middleware runs immediately after authentication and rejects the request if the authenticated user's own `tenant_id` doesn't match what the header claimed. A valid bearer token for Tenant A combined with a forged `X-Tenant-Id` for Tenant B is rejected at this check, not left to the global scope alone. See `ResolveTenant`'s docblock for the full reasoning — this was a real gap found and closed during a hardening pass, not a hypothetical.
+
 ## Payment data — staying out of PCI scope
 
 The database **never stores card numbers, CVVs, or track data** — only `card_brand` and `card_last4` for display, plus an opaque `provider_reference` (a Stripe PaymentIntent ID, for example). Actual card capture happens either:
