@@ -40,12 +40,23 @@ export default function POS() {
       const { data: order } = await api.post('/orders', payload)
       // Cash tender for demo purposes; a card tender would come from the
       // hardware bridge / payment terminal SDK instead.
-      await api.post(`/orders/${order.id}/payments`, { method: 'cash', amount: order.total })
+      await api.post(`/orders/${order.id}/payments`, { method: 'cash', amount: order.total, tendered_amount: order.total })
       return order
     },
     onSuccess: () => {
       setCart([])
       queryClient.invalidateQueries({ queryKey: ['orders'] })
+    },
+    onError: (err: any) => {
+      // 409 insufficient_stock lists every short ingredient at once — see
+      // docs/BUSINESS_RULES.md. Surface it plainly rather than a generic
+      // "something went wrong."
+      const shortages = err?.response?.data?.shortages
+      if (shortages?.length) {
+        alert('Not enough stock:\n' + shortages.map((s: any) => `${s.name} — need ${s.required}${s.unit}, have ${s.available}${s.unit}`).join('\n'))
+      } else {
+        alert(err?.response?.data?.message ?? 'Could not place the order. Please try again.')
+      }
     },
   })
 

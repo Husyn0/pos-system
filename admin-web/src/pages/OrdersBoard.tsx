@@ -29,6 +29,22 @@ export default function OrdersBoard() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['orders'] }),
   })
 
+  // Cancellation is a dedicated endpoint, not a status PATCH: a paid order
+  // requires an explicit auto_refund confirmation before it can cancel —
+  // see docs/BUSINESS_RULES.md. This keeps "cancel a paid order" a visible,
+  // deliberate action rather than a side effect of a generic status change.
+  const cancel = useMutation({
+    mutationFn: async (order: Order) => {
+      const hasPayments = order.status !== 'pending' // heuristic for the confirm prompt; server is the real authority
+      const autoRefund = hasPayments
+        ? confirm('This order may have a payment on it. Refund it automatically as part of cancelling?')
+        : false
+      return api.post(`/orders/${order.id}/cancel`, { reason: 'Cancelled from Orders board', auto_refund: autoRefund })
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['orders'] }),
+    onError: (err: any) => alert(err?.response?.data?.message ?? 'Could not cancel this order.'),
+  })
+
   const orders = data?.data ?? []
   const nextStatus: Record<string, string> = {
     pending: 'confirmed',
@@ -56,12 +72,20 @@ export default function OrdersBoard() {
                       <li key={item.id}>{item.quantity}× {item.menu_item?.name}</li>
                     ))}
                   </ul>
-                  <button
-                    onClick={() => advance.mutate({ id: order.id, status: nextStatus[order.status] })}
-                    className="btn-ghost text-xs mt-3 w-full text-center bg-black/5"
-                  >
-                    Mark as {nextStatus[order.status]} →
-                  </button>
+                  <div className="flex gap-2 mt-3">
+                    <button
+                      onClick={() => advance.mutate({ id: order.id, status: nextStatus[order.status] })}
+                      className="btn-ghost text-xs flex-1 text-center bg-black/5"
+                    >
+                      Mark as {nextStatus[order.status]} →
+                    </button>
+                    <button
+                      onClick={() => cancel.mutate(order)}
+                      className="btn-ghost text-xs text-brick bg-brick/5"
+                    >
+                      Cancel
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>

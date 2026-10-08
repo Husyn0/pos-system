@@ -10,6 +10,11 @@ export const api = axios.create({
 api.interceptors.request.use((config) => {
   const token = useAuthStore.getState().token
   if (token) config.headers.Authorization = `Bearer ${token}`
+  // Native/API clients identify their tenant explicitly rather than via
+  // subdomain (see backend ResolveTenant middleware docblock) — this is
+  // resolved once at deploy/config time per storefront.
+  const tenantId = import.meta.env.VITE_TENANT_ID
+  if (tenantId) config.headers['X-Tenant-Id'] = tenantId
   return config
 })
 
