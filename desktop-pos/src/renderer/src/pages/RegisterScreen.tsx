@@ -39,6 +39,16 @@ export function RegisterScreen() {
         items: cart.map((l) => ({ menu_item_id: l.menuItem.id, quantity: l.quantity })),
       }
       const result = await window.desktopBridge.createOfflineOrder(order)
+
+      if (result.rejected) {
+        // The server actively rejected this order (e.g. an ingredient ran
+        // out before it could sync) — do NOT print a receipt or open the
+        // drawer for an order that isn't actually valid. Flag it instead.
+        alert(`This order could not be placed: ${result.reason?.message ?? 'rejected by the server'}\n\nIt has been saved for a manager to review — please try again with a smaller order or check stock.`)
+        setCart([])
+        return
+      }
+
       await window.desktopBridge.printReceipt({ lines: cart, total: subtotal })
       await window.desktopBridge.openCashDrawer()
       setCart([])

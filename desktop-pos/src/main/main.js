@@ -43,6 +43,12 @@ app.on('window-all-closed', () => {
    directly — it goes through these typed, validated channels. ---- */
 
 ipcMain.handle('orders:createOffline', async (_event, orderPayload) => {
+  // Note: insufficient-stock (409) and payment validation errors can only be
+  // detected once this order actually reaches the cloud API — by design, the
+  // local SQLite outbox doesn't know current stock levels. If the immediate
+  // push in queueOrder() fails for that reason (vs. simply being offline),
+  // the renderer should treat 'synced: false' + a 4xx as "needs attention"
+  // rather than silently queuing it as a network retry. See syncService.js.
   return sync.queueOrder(orderPayload)
 })
 

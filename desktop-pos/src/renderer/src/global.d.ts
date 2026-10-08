@@ -1,5 +1,10 @@
 export interface DesktopBridge {
-  createOfflineOrder: (order: unknown) => Promise<{ localId: string; synced: boolean }>
+  createOfflineOrder: (order: unknown) => Promise<{
+    localId: string
+    synced: boolean
+    rejected?: boolean
+    reason?: { message?: string; error_code?: string; shortages?: Array<{ name: string; required: number; available: number; unit: string }> }
+  }>
   getLocalMenu: () => Promise<any[]>
   printReceipt: (receipt: unknown) => Promise<{ ok: boolean }>
   openCashDrawer: () => Promise<{ ok: boolean }>

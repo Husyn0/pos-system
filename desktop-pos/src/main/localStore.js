@@ -23,6 +23,7 @@ class LocalStore {
         local_id TEXT PRIMARY KEY,
         payload TEXT NOT NULL,
         status TEXT NOT NULL DEFAULT 'pending',
+        rejection_reason TEXT,
         created_at TEXT NOT NULL,
         synced_at TEXT
       );
@@ -54,6 +55,19 @@ class LocalStore {
   markSynced(localId) {
     this.db.prepare("UPDATE outbox_orders SET status = 'synced', synced_at = ? WHERE local_id = ?")
       .run(new Date().toISOString(), localId)
+  }
+
+  /** The server actively rejected this order (e.g. stock ran out before it
+   *  synced) — stop retrying it and surface it for a manager to resolve,
+   *  rather than looping forever on a request that will never succeed. */
+  markRejected(localId, reason) {
+    this.db.prepare("UPDATE outbox_orders SET status = 'rejected', rejection_reason = ? WHERE local_id = ?")
+      .run(reason, localId)
+  }
+
+  getRejectedOrders() {
+    return this.db.prepare("SELECT * FROM outbox_orders WHERE status = 'rejected'").all()
+      .map((r) => ({ ...r, payload: JSON.parse(r.payload) }))
   }
 }
 
