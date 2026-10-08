@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Middleware\EnsurePermission;
+use App\Http\Middleware\EnsureUserBelongsToTenant;
 use App\Http\Middleware\ResolveTenant;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -20,6 +21,7 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->alias([
             'tenant' => ResolveTenant::class,
+            'tenant.verify' => EnsureUserBelongsToTenant::class,
             'permission' => EnsurePermission::class,
         ]);
     })

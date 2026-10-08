@@ -13,16 +13,38 @@ use Symfony\Component\HttpFoundation\Response;
  * container as 'currentTenantId' / 'currentTenant', which the
  * BelongsToTenant model trait then uses to scope every query.
  *
- * Resolution order: paired device token -> subdomain -> authenticated
- * user/customer's own tenant_id.
+ * Resolution order, most-trusted first:
+ *   1. Paired device token (X-Device-Token) — the device was explicitly
+ *      claimed by a specific tenant/branch at pairing time.
+ *   2. Explicit X-Tenant-Id header — how admin-web, mobile-app, and
+ *      desktop-pos identify their tenant when they aren't hosted on a
+ *      tenant subdomain (which is the normal case for native/API clients,
+ *      and for local development). SECURITY: this header is
+ *      self-reported and MUST be cross-checked once the user is
+ *      authenticated — see EnsureUserBelongsToTenant, which runs right
+ *      after auth:sanctum and rejects the request if the authenticated
+ *      user/customer doesn't actually belong to the tenant this header
+ *      claimed. Without that check, a valid token for Tenant A plus a
+ *      forged X-Tenant-Id: tenant-b header could leak Tenant B's data
+ *      scoped-but-not-authorized to a Tenant A user.
+ *   3. Subdomain (brand.posapp.io) — how the public ordering site resolves
+ *      in production.
+ *
+ * Note this middleware intentionally does NOT fall back to
+ * $request->user()->tenant_id — that would require auth:sanctum to have
+ * already run, and 'tenant' runs first in the middleware stack (query
+ * scoping needs to be active before anything touches the database,
+ * including Sanctum's own token lookup). EnsureUserBelongsToTenant is the
+ * other half of this design: it runs AFTER auth:sanctum and validates
+ * consistency rather than ResolveTenant trying to establish it beforehand.
  */
 class ResolveTenant
 {
     public function handle(Request $request, Closure $next): Response
     {
         $tenant = $this->resolveFromDeviceToken($request)
-            ?? $this->resolveFromSubdomain($request)
-            ?? $this->resolveFromAuthenticatedPrincipal($request);
+            ?? $this->resolveFromTenantHeader($request)
+            ?? $this->resolveFromSubdomain($request);
 
         if (! $tenant) {
             return response()->json(['message' => 'Unable to resolve tenant for this request.'], 400);
@@ -47,9 +69,17 @@ class ResolveTenant
         if ($device) {
             $device->forceFill(['last_seen_at' => now()])->save();
             app()->instance('currentDevice', $device);
-            return $device->tenant()->withoutGlobalScopes()->first() ?? Tenant::find($device->tenant_id);
+            return Tenant::find($device->tenant_id);
         }
         return null;
+    }
+
+    private function resolveFromTenantHeader(Request $request): ?Tenant
+    {
+        $tenantId = $request->header('X-Tenant-Id');
+        if (! $tenantId) return null;
+
+        return Tenant::find($tenantId);
     }
 
     private function resolveFromSubdomain(Request $request): ?Tenant
@@ -62,14 +92,5 @@ class ResolveTenant
         if (! $slug || $slug === 'www') return null;
 
         return Tenant::where('slug', $slug)->first();
-    }
-
-    private function resolveFromAuthenticatedPrincipal(Request $request): ?Tenant
-    {
-        $user = $request->user();
-        if ($user && isset($user->tenant_id)) {
-            return Tenant::find($user->tenant_id);
-        }
-        return null;
     }
 }

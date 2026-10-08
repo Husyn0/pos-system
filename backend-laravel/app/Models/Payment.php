@@ -12,11 +12,11 @@ class Payment extends Model
     const UPDATED_AT = null;
 
     protected $fillable = [
-        'tenant_id', 'order_id', 'method', 'provider', 'provider_reference',
-        'card_brand', 'card_last4', 'amount', 'status', 'processed_by', 'paid_at',
+        'tenant_id', 'order_id', 'method', 'provider', 'provider_reference', 'idempotency_key',
+        'card_brand', 'card_last4', 'amount', 'tendered_amount', 'status', 'processed_by', 'paid_at',
     ];
 
-    protected $casts = ['amount' => 'decimal:2', 'paid_at' => 'datetime'];
+    protected $casts = ['amount' => 'decimal:2', 'tendered_amount' => 'decimal:2', 'paid_at' => 'datetime'];
 
     public function order()
     {

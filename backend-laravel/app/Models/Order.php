@@ -23,6 +23,7 @@ class Order extends Model
         'created_by', 'order_type', 'source', 'status', 'subtotal', 'discount_total',
         'tax_total', 'tip_amount', 'total', 'currency', 'idempotency_key', 'placed_at',
         'confirmed_at', 'ready_at', 'completed_at', 'cancelled_reason', 'notes', 'synced_at',
+        'lock_version',
     ];
 
     protected $casts = [
@@ -35,6 +36,12 @@ class Order extends Model
     public function items()
     {
         return $this->hasMany(OrderItem::class);
+    }
+
+    /** Excludes voided line items — this is what totals should be computed from. */
+    public function activeItems()
+    {
+        return $this->hasMany(OrderItem::class)->where('status', '!=', 'voided');
     }
 
     public function payments()

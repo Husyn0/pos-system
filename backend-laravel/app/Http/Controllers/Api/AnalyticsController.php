@@ -58,6 +58,8 @@ class AnalyticsController extends Controller
         return response()->json($rows);
     }
 
+    /** Uses Postgres's EXTRACT(HOUR FROM ...) — swap for DATE_FORMAT(...,'%H')
+     *  if deploying on MySQL, or a driver-conditional query if supporting both. */
     public function peakHours(Request $request)
     {
         $branchId = $request->branch_id;

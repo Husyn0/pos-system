@@ -5,85 +5,77 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Order;
 use App\Models\Payment;
+use App\Services\PaymentService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 
 class PaymentController extends Controller
 {
-    /**
-     * Records a payment against an order. For 'cash', this is authoritative
-     * immediately. For 'card'/'online', the actual card capture already
-     * happened at the gateway/terminal — this just records the outcome
-     * (see docs/SECURITY.md: no PAN/CVV ever passes through this endpoint).
-     */
+    public function __construct(private PaymentService $payments) {}
+
     public function store(Request $request, Order $order)
     {
-        $request->validate([
+        $data = $request->validate([
             'method' => 'required|in:cash,card,wallet,online',
             'provider' => 'nullable|string|max:30',
             'provider_reference' => 'nullable|string|max:150',
             'card_brand' => 'nullable|string|max:20',
             'card_last4' => 'nullable|digits:4',
             'amount' => 'required|numeric|min:0.01',
+            'tendered_amount' => 'nullable|numeric|min:0',
+            'currency' => 'nullable|string|size:3',
+            'idempotency_key' => 'nullable|string|max:80',
         ]);
 
-        if ($request->amount > $order->balanceDue() + 0.01) {
-            return response()->json(['message' => 'Payment exceeds the remaining balance.'], 422);
-        }
+        $result = $this->payments->recordPayment($order, $data, $request->user()?->id);
 
-        $payment = Payment::create([
-            'tenant_id' => $order->tenant_id,
-            'order_id' => $order->id,
-            'method' => $request->method,
-            'provider' => $request->provider,
-            'provider_reference' => $request->provider_reference,
-            'card_brand' => $request->card_brand,
-            'card_last4' => $request->card_last4,
-            'amount' => $request->amount,
-            'status' => 'succeeded', // cash is immediate; gateway payments should verify webhook before calling this
-            'processed_by' => $request->user()?->id,
-            'paid_at' => now(),
-        ]);
-
-        if ($order->fresh()->isFullyPaid() && $order->status === Order::STATUS_PENDING) {
-            $order->update(['status' => Order::STATUS_CONFIRMED, 'confirmed_at' => now()]);
-        }
-
-        return response()->json($payment, 201);
+        return response()->json([
+            'payment' => $result['payment'],
+            'change_due' => $result['change_due'],
+            'idempotent_replay' => $result['idempotent_replay'],
+        ], $result['idempotent_replay'] ? 200 : 201);
     }
 
     public function refund(Request $request, Payment $payment)
     {
-        $request->validate([
-            'amount' => 'required|numeric|min:0.01|max:' . $payment->amount,
+        $data = $request->validate([
+            'amount' => 'required|numeric|min:0.01',
             'reason' => 'required|string|max:255',
         ]);
 
-        $payment->refunds()->create([
-            'amount' => $request->amount,
-            'reason' => $request->reason,
-            'processed_by' => $request->user()?->id,
-        ]);
+        $refund = $this->payments->refundPayment($payment, $data['amount'], $data['reason'], $request->user()?->id);
 
-        $payment->update([
-            'status' => $request->amount == $payment->amount ? 'refunded' : 'partially_refunded',
-        ]);
-
-        return response()->json($payment->fresh('refunds'));
+        return response()->json($refund->load('payment'));
     }
 
-    /** Creates a gateway payment intent for online/card-not-present flows (public-web checkout). */
+    /** Creates a gateway PaymentIntent for online/card-not-present checkout
+     *  (public-web). The order isn't marked paid here — only the webhook
+     *  (StripeWebhookController), driven by the gateway's own confirmation,
+     *  does that. This split is what stops a compromised or buggy client
+     *  from ever being able to just *say* a card payment succeeded. */
     public function createIntent(Request $request, Order $order)
     {
-        // Wire up Stripe (or another PSP) here, e.g.:
-        // $intent = \Stripe\PaymentIntent::create([
-        //     'amount' => (int) round($order->balanceDue() * 100),
-        //     'currency' => strtolower($order->currency),
-        //     'metadata' => ['order_id' => $order->id],
-        // ]);
+        if ($order->isFullyPaid()) {
+            return response()->json(['message' => 'This order is already fully paid.'], 422);
+        }
+
+        $amount = $order->balanceDue();
+        $providerReference = 'pi_stub_' . Str::random(24); // Stripe\PaymentIntent::create(...)->id in production
+
+        Payment::create([
+            'tenant_id' => $order->tenant_id,
+            'order_id' => $order->id,
+            'method' => 'online',
+            'provider' => 'stripe',
+            'provider_reference' => $providerReference,
+            'amount' => $amount,
+            'status' => 'pending', // flips to 'succeeded'/'failed' only via the webhook
+        ]);
+
         return response()->json([
-            'client_secret' => 'stub_' . Str::random(24),
-            'amount' => $order->balanceDue(),
+            'client_secret' => $providerReference . '_secret_stub',
+            'provider_reference' => $providerReference,
+            'amount' => $amount,
             'currency' => $order->currency,
         ]);
     }
