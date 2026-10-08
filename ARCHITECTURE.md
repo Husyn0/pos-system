@@ -13,19 +13,25 @@ This is implemented as Laravel middleware (`app/Http/Middleware/ResolveTenant.ph
 ## 2. Order lifecycle & real-time updates
 
 ```
-pending → confirmed → preparing → ready → served/completed
-                                      ↘ cancelled (any stage before completed)
+pending → confirmed → preparing → ready → completed
+   \           \            \          \
+    -----------+------------+----------+---> cancelled
 ```
 
+Every transition is enforced by `App\Services\OrderStateMachine` — illegal jumps (e.g. `pending` straight to `completed`) are rejected with a 409, not silently allowed. Cancellation is its own operation (`OrderService::cancelOrder`), not a status transition, because a paid order can't be cancelled without either refunding first or explicitly opting into auto-refund — see `docs/BUSINESS_RULES.md` for the full contract.
+
 - Order created (POS, kiosk, web, or waiter app) → `OrderCreated` event.
-- Kitchen marks items ready → `OrderItemStatusChanged` → `OrderStatusChanged` when all items ready.
+- Items added to an open order, or a line voided → `OrderUpdated` event.
+- Status changes → `OrderStatusChanged` event.
 - Every event broadcasts on a private channel `tenant.{tenantId}.branch.{branchId}.orders` via Laravel Reverb (self-hosted WebSocket server, Pusher-protocol compatible).
 - Subscribers: Kitchen Display (admin-web `/kds` route), customer order-tracking page (public-web), waiter's phone (mobile-app) — all get pushed the same event, no polling.
 - Offline devices (desktop POS) queue orders locally and POST with an `idempotency_key` when connectivity returns; the server treats a repeated key as a no-op success rather than a duplicate order.
 
 ## 3. Inventory deduction
 
-On `OrderStatusChanged → completed`, a queued job (`DeductInventoryForOrder`) walks each `order_item` → `recipe_ingredients` → decrements `inventory_items.quantity_on_hand` and writes a `stock_movements` row per ingredient. Running this as a queued job (not inline in the request) keeps checkout fast and makes the deduction retry-safe if it fails partway.
+Ingredients are deducted **synchronously at order creation**, inside the same locked database transaction as the order itself — not later at completion, and not via a background job. `InventoryService::reserveForOrderLines` locks every required `inventory_items` row (`SELECT ... FOR UPDATE`, in a fixed sort order to avoid cross-order deadlocks), verifies sufficiency, and decrements, all before the order creation transaction commits. If stock is short, order creation rolls back entirely and the client gets a 409 listing every short ingredient at once. This is what actually prevents overselling under concurrent load — see `docs/BUSINESS_RULES.md` for the full reasoning and `tests/Feature/OrderLifecycleTest.php` for the tests that lock it in.
+
+Cancelling an order before it reaches `completed` restocks whatever it reserved; a refund issued after `completed` does not, since the ingredients were actually consumed. Voiding a single line item follows the same rule at the line level, and both paths are idempotent — a retried cancel/void can't double-restock.
 
 ## 4. Hardware integration
 

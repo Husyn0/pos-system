@@ -81,6 +81,7 @@ docker compose up -d
 
 - **Database design**: [`database/schema.sql`](./database/schema.sql) and [`database/ERD.md`](./database/ERD.md)
 - **System architecture, scaling, offline strategy**: [`ARCHITECTURE.md`](./ARCHITECTURE.md)
+- **Exact order/payment/inventory business rules** (state machine, locking, idempotency, refund math): [`docs/BUSINESS_RULES.md`](./docs/BUSINESS_RULES.md) — backed by `backend-laravel/tests/`
 - **Security model**: [`docs/SECURITY.md`](./docs/SECURITY.md)
 - **Analytics design**: [`docs/ANALYTICS.md`](./docs/ANALYTICS.md)
 - **Deployment**: [`docs/DEPLOYMENT.md`](./docs/DEPLOYMENT.md)
